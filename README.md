@@ -11,7 +11,10 @@ The following `R` packages are needed:
 * `ggplot2`
 * `ggpubr`
 * `RColorBrewer`
-
+* `mgcv`
+* `itsadug`
+* `tidymv`
+  
 ## Reproduce
 
 To reproduce the analyses of the study, run `analysis.Rmd`.
