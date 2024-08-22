@@ -1,0 +1,190 @@
+---
+title: "SPL,f0,HNR and CPPS"
+author: Nicoletta Klotz
+output: html_document
+date: "2024-07-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+```
+
+#Concatenate all files
+```{r}
+
+csv_directory <- "/path"
+
+file_list <- list.files(path = csv_directory, pattern = "*.csv", full.names = TRUE)
+
+print(file_list)
+
+read_csv_with_error_handling <- function(file) {
+  if (file.exists(file)) {
+    read_csv(file)
+  } else {
+    warning(paste("File does not exist:", file))
+    NULL
+  }
+}
+
+concatenated_df <- bind_rows(lapply(file_list, read_csv_with_error_handling))
+
+print(concatenated_df)
+
+output_file <- file.path(csv_directory, "concatenated_data.csv")
+write_csv(concatenated_df, output_file)
+
+cat("Concatenated file saved to:", output_file)
+
+```
+
+
+#Split files in pre- and posttreatment
+```{r}
+
+filtered_data_path <- "/Users/nicolettaklotz/Dropbox/Mein Mac (MacBook Air von Nicoletta)/Desktop/Vocal_Task_6_Acoustic/concatenated_data.csv"
+filtered_data <- read.csv(filtered_data_path, stringsAsFactors = FALSE, sep="\t")
+
+print(colnames(filtered_data))
+
+pretreatment_data <- filtered_data %>% filter(grepl("_0_", fileName))
+posttreatment_data <- filtered_data %>% filter(!grepl("_0_", fileName))
+
+pretreatment_output_path <- "/path"
+posttreatment_output_path <- "/path"
+
+write.csv(pretreatment_data, pretreatment_output_path, row.names = FALSE)
+write.csv(posttreatment_data, posttreatment_output_path, row.names = FALSE)
+
+print(paste("Pretreatment data saved to:", pretreatment_output_path))
+print(paste("Posttreatment data saved to:", posttreatment_output_path))
+```
+
+#Calculate the descriptive Statistics
+```{r}
+
+pretreatment_data_path <- "/path"
+posttreatment_data_path <- "/path"
+
+pretreatment_data <- read.csv(pretreatment_data_path, stringsAsFactors = FALSE)
+posttreatment_data <- read.csv(posttreatment_data_path, stringsAsFactors = FALSE)
+
+calculate_stats <- function(data, columns) {
+  stats <- data %>%
+    mutate(across(all_of(columns), ~as.numeric(as.character(.)), .names = "num_{col}")) %>%
+    summarize(across(starts_with("num_"), list(
+      mean = ~mean(.x, na.rm = TRUE),
+      sd = ~sd(.x, na.rm = TRUE),
+      median = ~median(.x, na.rm = TRUE),
+      min = ~min(.x, na.rm = TRUE),
+      max = ~max(.x, na.rm = TRUE),
+      range = ~max(.x, na.rm = TRUE) - min(.x, na.rm = TRUE)
+    ), .names = "{.col}_{.fn}"))
+  
+  return(stats)
+}
+
+columns_to_analyze <- c("meanPitch", "meanIntensity", "meanHtoNRatio", "cpps")
+
+pretreatment_stats <- calculate_stats(pretreatment_data, columns_to_analyze)
+
+posttreatment_stats <- calculate_stats(posttreatment_data, columns_to_analyze)
+
+print("Pretreatment Statistics")
+print(pretreatment_stats)
+
+print("Posttreatment Statistics")
+print(posttreatment_stats)
+
+```
+
+#Boxplots for showing effect of treatment on HNR and CPPS
+```{r}
+
+pretreatment_data_path <- "/path"
+posttreatment_data_path <- "/path"
+
+pretreatment_data <- read.csv(pretreatment_data_path)
+posttreatment_data <- read.csv(posttreatment_data_path)
+
+print(colnames(pretreatment_data))
+print(colnames(posttreatment_data))
+
+colnames(posttreatment_data) <- colnames(pretreatment_data)
+
+pretreatment_data$Treatment_Phase <- "Pretreatment"
+posttreatment_data$Treatment_Phase <- "Posttreatment"
+
+data <- rbind(pretreatment_data, posttreatment_data)
+
+data$Treatment_Phase <- factor(data$Treatment_Phase, levels = c("Pretreatment", "Posttreatment"))
+
+data$meanHtoNRatio <- as.numeric(as.character(data$meanHtoNRatio))
+data$cpps <- as.numeric(as.character(data$cpps))
+
+y_limits <- c(0, 30)  # Define y-axis limits that cover all data points
+
+ggplot(data, aes(x=Treatment_Phase, y=meanHtoNRatio, fill=Treatment_Phase)) +
+  geom_boxplot() +
+  labs(title="HNR Values by Treatment Phase",
+       x="Treatment Phase",
+       y="HNR") +
+  theme_minimal() +
+  scale_fill_brewer(palette="Pastel2") +
+  scale_y_continuous(breaks=seq(0, 30, 2.5), limits=y_limits)
+
+ggplot(data, aes(x=Treatment_Phase, y=cpps, fill=Treatment_Phase)) +
+  geom_boxplot() +
+  labs(title="CPPS Values by Treatment Phase",
+       x="Treatment Phase",
+       y="CPPS") +
+  theme_minimal() +
+  scale_fill_brewer(palette="Pastel2") +
+  scale_y_continuous(breaks=seq(0, 30, 2.5), limits=y_limits)
+
+summary(data$meanHtoNRatio)
+summary(data$cpps)
+```
+
+#Inferential Statistics: Fit linear regression models
+```{r}
+
+pretreatment_data_path <- "/path"
+posttreatment_data_path <- "/path"
+
+print(colnames(pretreatment_data))
+print(colnames(posttreatment_data))
+
+colnames(posttreatment_data) <- colnames(pretreatment_data)
+
+pretreatment_data$Treatment_Phase <- "Pretreatment"
+posttreatment_data$Treatment_Phase <- "Posttreatment"
+
+data <- rbind(pretreatment_data, posttreatment_data)
+
+data$Treatment_Phase <- factor(data$Treatment_Phase, levels = c("Pretreatment", "Posttreatment"))
+
+data$meanHtoNRatio <- as.numeric(as.character(data$meanHtoNRatio))
+data$cpps <- as.numeric(as.character(data$cpps))
+
+if("meanHtoNRatio" %in% colnames(data)) {
+  model_hnr <- lm(meanHtoNRatio ~ Treatment_Phase, data = data)
+  print(summary(model_hnr))
+} else {
+  print("meanHtoNRatio column not found in the dataset.")
+}
+
+if("cpps" %in% colnames(data)) {
+  model_cpps <- lm(cpps ~ Treatment_Phase, data = data)
+  print(summary(model_cpps))
+} else {
+  print("cpps column not found in the dataset.")
+}
+
+```
+
+
