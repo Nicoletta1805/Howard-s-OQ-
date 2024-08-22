@@ -1,0 +1,285 @@
+---
+title: "HowardOQ"
+author: Nicoletta Klotz
+output: html_document
+date: "2024-07-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+```
+
+
+#Concatenate and save all files
+```{r}
+
+csv_directory <- "path"
+
+file_list <- list.files(path = csv_directory, pattern = "*.csv", full.names = TRUE)
+
+print(file_list)
+
+read_csv_with_error_handling <- function(file) {
+  if (file.exists(file)) {
+    read_csv(file)
+  } else {
+    warning(paste("File does not exist:", file))
+    NULL
+  }
+}
+
+concatenated_df <- bind_rows(lapply(file_list, read_csv_with_error_handling))
+
+print(concatenated_df)
+
+output_file <- file.path(csv_directory, "concatenated_data.csv")
+write_csv(concatenated_df, output_file)
+
+cat("Concatenated file saved to:", output_file)
+```
+
+#Read and combine all files + minimum number of periods
+```{r}
+
+process_file <- function(file_path) {
+  data <- read.csv(file_path, sep = "\t", stringsAsFactors = FALSE)
+  data$periodNum <- as.numeric(gsub("[^0-9.]", "", data$periodNum))
+  data$HowardOQ <- as.numeric(gsub("[^0-9.]", "", data$HowardOQ))
+  data$periodStart <- as.numeric(gsub("[^0-9.]", "", data$periodStart))
+  data$periodEnd <- as.numeric(gsub("[^0-9.]", "", data$periodEnd))
+  data$f0 <- as.numeric(gsub("[^0-9.]", "", data$f0))
+  data <- data[!is.na(data$periodNum) & !is.na(data$HowardOQ), ]
+  data$treatment <- ifelse(grepl("_0_", basename(file_path)), "pretreatment", "posttreatment")
+  return(data)
+}
+
+dir_path <- "path"
+
+file_paths <- list.files(path = dir_path, pattern = "*.csv", full.names = TRUE)
+
+all_data <- lapply(file_paths, process_file) %>% bind_rows()
+
+min_periods <- all_data %>%
+  group_by(fileName) %>%
+  summarize(max_period = max(periodNum, na.rm = TRUE)) %>%
+  ungroup() %>%
+  summarize(min_period = min(max_period)) %>%
+  pull(min_period)
+
+print(paste("Minimum number of periods:", min_periods))
+
+filtered_data <- all_data %>% filter(periodNum <= min_periods)
+
+print(filtered_data)
+
+output_path <- "path"
+write.csv(filtered_data, output_path, row.names = FALSE)
+
+print(paste("Filtered data saved to:", output_path))
+
+```
+
+#Split files in pre- and posttreatment
+```{r}
+
+filtered_data_path <- "path"
+filtered_data <- read.csv(filtered_data_path, stringsAsFactors = FALSE)
+
+print(colnames(filtered_data))
+
+pretreatment_data <- filtered_data %>% filter(grepl("_0_", fileName))
+posttreatment_data <- filtered_data %>% filter(!grepl("_0_", fileName))
+
+
+pretreatment_output_path <- "path"
+write.csv(pretreatment_data, pretreatment_output_path, row.names = FALSE)
+
+posttreatment_output_path <- "path"
+write.csv(posttreatment_data, posttreatment_output_path, row.names = FALSE)
+
+print(paste("Pretreatment data saved to:", pretreatment_output_path))
+print(paste("Posttreatment data saved to:", posttreatment_output_path))
+
+```
+
+#Define and clean all files with additional checks
+```{r}
+
+clean_and_load_with_checks <- function(file_path, valid_file_names) {
+  
+  file_name <- tools::file_path_sans_ext(basename(file_path))
+  
+  if (file_name %in% valid_file_names) {
+    data <- read.csv(file_path, sep = "\t", stringsAsFactors = FALSE)
+    data_cleaned <- data %>%
+      mutate(across(everything(), as.character)) %>%  
+      mutate(across(everything(), ~ na_if(., "?"))) %>%
+      na.omit() %>%
+      select_if(~ !all(is.na(.))) %>%
+      filter(fileName == file_name)  
+    
+    return(data_cleaned)
+  } else {
+    return(NULL)
+  }
+}
+
+valid_file_names <- c(
+  'P1_VT1_EGG',
+  'P2_VT1_EGG',
+  'P3_VT1_EGG',
+  'P4_VT1_EGG',
+  'P5_VT1_EGG',
+  'P6_VT1_EGG',
+  'P9_VT1_EGG',
+  'P10_VT1_EGG',
+  'P12_VT1_EGG'
+)
+
+directory <- "path"
+
+file_paths <- list.files(directory, full.names = TRUE, pattern = "*.txt")
+
+dataframes <- lapply(file_paths, clean_and_load_with_checks, valid_file_names = valid_file_names)
+dataframes <- dataframes[!sapply(dataframes, is.null)]  
+
+dataframes <- lapply(dataframes, function(df) {
+  df %>% mutate(
+    periodNum = as.numeric(periodNum),
+    periodStart = as.numeric(periodStart),
+    periodEnd = as.numeric(periodEnd),
+    f0 = as.numeric(f0),
+    HowardOQ = as.numeric(HowardOQ)
+  )
+})
+
+concatenated_data_final <- bind_rows(dataframes)
+
+write.csv(concatenated_data_final, file = "path", row.names = FALSE)
+
+print(concatenated_data_final)
+
+```
+
+#Calculate the descriptive Statistics
+```{r}
+
+pretreatment_data_path <- "path"
+posttreatment_data_path <- "path"
+
+pretreatment_data <- read.csv(pretreatment_data_path, stringsAsFactors = FALSE)
+posttreatment_data <- read.csv(posttreatment_data_path, stringsAsFactors = FALSE)
+
+calculate_stats <- function(data) {
+  data %>%
+    filter(HowardOQ >= 0.2) %>%  # Exclude HowardOQ values below 0.2
+    summarize(
+      mean = mean(HowardOQ, na.rm = TRUE),
+      sd = sd(HowardOQ, na.rm = TRUE),
+      median = median(HowardOQ, na.rm = TRUE),
+      min = min(HowardOQ, na.rm = TRUE),
+      max = max(HowardOQ, na.rm = TRUE),
+      range = max(HowardOQ, na.rm = TRUE) - min(HowardOQ, na.rm = TRUE),
+      count = n()  # Count of entries after filtering
+    )
+}
+
+
+pretreatment_stats <- calculate_stats(pretreatment_data)
+
+posttreatment_stats <- calculate_stats(posttreatment_data)
+
+print("Pretreatment Statistics")
+print(pretreatment_stats)
+
+print("Posttreatment Statistics")
+print(posttreatment_stats)
+
+```
+
+#Regression analysis
+```{r}
+
+pretreatment_data_path <- "path"
+posttreatment_data_path <- "path"
+
+pre_treatment <- read.csv(pretreatment_data_path)
+post_treatment <- read.csv(posttreatment_data_path)
+
+pre_treatment$Treatment <- 'Pre-Treatment'
+post_treatment$Treatment <- 'Post-Treatment'
+
+combined_data <- rbind(pre_treatment, post_treatment)
+
+combined_data$Treatment <- factor(combined_data$Treatment, levels = c('Pre-Treatment', 'Post-Treatment'))
+
+model <- lm(HowardOQ ~ Treatment, data = combined_data)
+summary(model)
+
+```
+
+#Boxplots for showing effect of treatment on Howard OQ
+```{r}
+
+pretreatment_data_path <- "/path"
+posttreatment_data_path <- "/path"
+
+
+pre_treatment <- read.csv(pretreatment_data_path)
+post_treatment <- read.csv(posttreatment_data_path)
+
+pre_treatment$Treatment <- 'Pre-Treatment'
+post_treatment$Treatment <- 'Post-Treatment'
+
+combined_data <- rbind(pre_treatment[, c("HowardOQ", "Treatment")], post_treatment[, c("HowardOQ", "Treatment")])
+
+combined_data$Treatment <- factor(combined_data$Treatment, levels = c('Pre-Treatment', 'Post-Treatment'))
+
+combined_data$Log_HowardOQ <- log(combined_data$HowardOQ)
+
+y_limits <- c(0, 0.90)  # Define y-axis limits that cover all data points
+
+ggplot(combined_data, aes(x=Treatment, y=HowardOQ, fill=Treatment)) +
+  geom_boxplot() +
+  labs(title="HowardOQ Before and After Treatment",
+       x="Treatment Phase",
+       y="Howard OQ") +
+  theme_minimal() +
+  scale_fill_brewer(palette="Pastel2") +
+  scale_y_continuous(breaks=seq(0, 0.9, 0.10), limits=y_limits)
+  
+ggplot(combined_data, aes(x=HowardOQ, fill=Treatment)) + 
+  geom_histogram(binwidth=0.02, position="dodge", color='black', alpha=0.7) +
+  facet_wrap(~Treatment, scales='free_y') +
+  labs(title="Histogram of Howard OQ Before and After Treatment",
+       x="Howard OQ",
+       y="Frequency") +
+  theme_minimal() +
+  scale_fill_brewer(palette="Pastel2")
+
+# Create the boxplot for log-transformed HowardOQ
+#ggplot(combined_data, aes(x=Treatment, y=Log_HowardOQ, fill=Treatment)) +
+#  geom_boxplot() +
+#  labs(title="Boxplot of Log-Transformed HowardOQ Before and After Treatment",
+#       x="Treatment Phase",
+#       y="Log(Howard OQ)") +
+#  theme_minimal() +
+#  scale_fill_brewer(palette="Pastel2")
+
+
+# Create histograms for log-transformed HowardOQ data
+#ggplot(combined_data, aes(x=Log_HowardOQ, fill=Treatment)) + 
+#  geom_histogram(binwidth=0.1, position="dodge", color='black', alpha=0.7) +
+#  facet_wrap(~Treatment, scales='free_y') +
+#  labs(title="Histogram of Log-Transformed Howard OQ Before and After Treatment",
+#       x="Log(Howard OQ)",
+#       y="Frequency") +
+#  theme_minimal() +
+#  scale_fill_brewer(palette="Pastel2")
+
+```
