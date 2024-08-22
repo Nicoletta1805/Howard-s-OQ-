@@ -1,0 +1,36 @@
+---
+title: "GAM(M)s"
+output: html_document
+date: "2024-07-30"
+---
+
+```{r}
+library(mgcv)
+library(itsadug)
+library(tidymv)
+
+pre_data <- read.csv('/path')
+post_data <- read.csv('/path')
+
+data <- rbind(pre_data, post_data)
+
+data$condition <- as.factor(data$condition)
+
+model <- bam(HowardOQ ~ condition + 
+             s(periodNum, k = 3) + 
+             s(periodNum, by = condition, k = 3),
+             data = data, method = "ML")
+
+gam.check(model)
+
+null.model <- bam(HowardOQ ~ 
+                  s(periodNum, k = 3) +
+                  s(periodNum, by = condition, k = 3),
+                  data = data, method = "ML")
+
+compareML(model, null.model)
+
+plot_smooths(model, series = periodNum, comparison = "condition")
+
+plot_diff(model, view = "periodNum", comp = list(condition = c("pre", "post")))
+```
