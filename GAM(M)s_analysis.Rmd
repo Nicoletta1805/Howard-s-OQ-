@@ -9,8 +9,8 @@ library(mgcv)
 library(itsadug)
 library(tidymv)
 
-pre_data <- read.csv('/path')
-post_data <- read.csv('/path')
+pre_data <- read.csv("/path")
+post_data <- read.csv("/path")
 
 data <- rbind(pre_data, post_data)
 
